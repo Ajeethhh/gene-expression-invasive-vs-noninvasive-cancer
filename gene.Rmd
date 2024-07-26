@@ -1,0 +1,246 @@
+---
+
+Date: "7-Feb-2024"
+Output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r, eval=TRUE}
+#install.packages("xtable")
+#install.packages("rmarkdown")
+#install.packages("ggplot2")
+#install.packages("reshape2")
+#install.packages("stats")
+#install.packages("MASS")
+#install.packages("caret")
+library(xtable)
+library(rmarkdown)
+library(ggplot2)
+library(reshape2)
+library(stats)
+library(MASS)
+library(caret)
+```
+
+```{r, eval=TRUE}
+# Read the data into RStudio (or R) using the read.csv R command
+InitialData <- read.csv(file="gene-expression-invasive-vs-noninvasive-cancer.csv")
+
+# Set seed and creating subset
+set.seed(2312420)
+my.gene.subset <- rank(runif(1:4948))[1:10] 
+
+# Adding the class variable to the list of variables
+my.gene.subset <- c(my.gene.subset, 4949)
+
+# Subset the data with the sampled genes + class variable
+my.gene.subset <- InitialData[, my.gene.subset]
+
+# Renaming the Columns
+colnames(my.gene.subset) <- c("Gene1","Gene2","Gene3","Gene4","Gene5","Gene6","Gene7",
+                              "Gene8","Gene9","Gene10","Class")
+```
+
+\textbf{Task 1A: }
+
+```{r, eval=TRUE}
+# Calculating Variances
+variances <- var(my.gene.subset[1:10])
+knitr::kable(variances, digits = 2)
+
+# Calculating Covariances
+cov_matrix <- cov(my.gene.subset[1:10])
+knitr::kable(cov_matrix, digits = 2)
+
+# Calculating Correlation
+cor_matrix <- cor(my.gene.subset[1:10])
+knitr::kable(cor_matrix, digits = 2)
+```
+
+\textbf{Task 1B: }
+
+```{r, eval=TRUE}
+# Generating Distance Matrix for the sampled data
+dist_matrix <- as.matrix(dist(my.gene.subset[1:10]))
+#knitr::kable(dist_matrix, digits = 2)
+```
+
+\textbf{Task 1C: }
+
+```{r, eval=TRUE}
+
+# Reshaping the dataset
+data_merge <- melt(my.gene.subset[1:10])
+
+# Generating Q-Q plots for each gene in a combined chart
+qq_plot <- ggplot(data_merge, aes(sample = value)) +
+  geom_qq() +
+  geom_qq_line() +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Q-Q Plots for Selected Genes")
+plot(qq_plot)
+
+# Calculate Mahalanobis distance
+cov_matrix <- cov(my.gene.subset)
+mahalanobis_distances <- mahalanobis(my.gene.subset, colMeans(my.gene.subset), cov_matrix)
+
+# Q-Q Plot Based on Generalized Distance
+qqnorm(mahalanobis_distances, main = "Q-Q Plot for Mahalanobis Distances")
+qqline(mahalanobis_distances, col = "steelblue")
+```
+\textbf{Task 2: }
+
+```{r, eval=TRUE}
+# Performing PCA
+gene.pca <- princomp(my.gene.subset[1:10], cor = TRUE)
+
+#Printing Summary stats for PCA
+summary(gene.pca, loadings = TRUE,cutoff=.0)
+plot(gene.pca, main="PCA Analysis")
+```
+
+\textbf{Task 3A: }
+
+```{r, eval=TRUE}
+# Fit a MANOVA model
+manova_result <- manova(as.matrix(my.gene.subset[, 1:10]) ~ Class, data = my.gene.subset)
+
+# Display the MANOVA summary
+summary(manova_result)
+
+# Check the significance of the MANOVA
+anova_result <- anova(manova_result)
+print(anova_result)
+```
+
+
+\textbf{Task 3B: }
+
+```{r, eval=TRUE}
+#Performing Analysis based on first 2 Principal Components
+# Saving the Class variable as a variable
+class_variable <- my.gene.subset$Class
+
+# Perform PCA excluding the Class variable
+genes_data <- my.gene.subset[,-ncol(my.gene.subset)]
+pca_result <- prcomp(genes_data, scale. = TRUE)
+
+# Create a dataframe of the first two principal components from PCA results
+scores <- as.data.frame(pca_result$x[, 1:2])
+
+# Adding the Class variable to the scores dataframe
+scores$Class <- class_variable  # Ensure this matches in length with scores
+
+# Converting the 'Class' variable to a factor for plotting
+scores$Class <- as.factor(scores$Class)
+
+# Using ggplot2 to create the PCA plot
+ggplot(scores, aes(x = PC1, y = PC2, color = Class)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "PCA of Gene Expression by Cancer Type",
+       x = "Principal Component 1",
+       y = "Principal Component 2",
+       color = "Cancer Type") +
+  scale_color_manual(values = c("1" = "blue", "2" = "red"))
+```
+
+\textbf{Task 4A: }
+
+```{r, eval=TRUE}
+# Preparing the data for LDA
+# Ensure the class variable is a factor
+my.gene.subset$Class <- as.factor(my.gene.subset$Class)
+
+# Split the data into training and testing sets (optional, but recommended for performance evaluation)
+set.seed(2312420) # Using seed for reproducibility
+indexes <- createDataPartition(my.gene.subset$Class, p = 0.7, list = FALSE)
+trainData <- my.gene.subset[indexes, ]
+testData <- my.gene.subset[-indexes, ]
+
+# Apply LDA on the training data
+lda_model <- lda(Class ~ ., data = trainData)
+
+# Predicton on the testing data
+predictions <- predict(lda_model, testData)
+predictedClass <- predictions$class
+
+# Calculate the confusion matrix
+confusionMatrix <- confusionMatrix(predictedClass, testData$Class)
+
+# Printing the confusion matrix
+print(confusionMatrix)
+
+# Sensitivity, Specificity, and Misclassification Error from the confusion matrix
+sensitivity <- confusionMatrix$byClass['Sensitivity']
+specificity <- confusionMatrix$byClass['Specificity']
+misclassification_error <- 1 - confusionMatrix$overall['Accuracy']
+```
+
+\textbf{Task 4B: }
+
+```{r, eval=TRUE}
+# Apply QDA on the training data
+qda_model <- qda(Class ~ ., data = trainData)
+
+# Predict on the testing data
+predictions <- predict(qda_model, testData)
+predictedClass <- predictions$class
+
+# Calculate the confusion matrix
+confusionMatrix <- confusionMatrix(predictedClass, testData$Class)
+
+# Print the confusion matrix
+print(confusionMatrix)
+
+# Extract and print performance metrics from the confusion matrix
+sensitivity <- confusionMatrix$byClass['Sensitivity']
+specificity <- confusionMatrix$byClass['Specificity']
+misclassification_error <- 1 - confusionMatrix$overall['Accuracy']
+```
+
+\textbf{Task 4C: }
+
+```{r, eval=TRUE}
+#Observations:
+#1. The sensitivity of QDA is higher than that of LDA.
+
+#2. The specificity of LDA is higher than that of QDA.
+
+#3. The misclassification error is slightly higher for QDA compared to LDA.
+```
+
+\textbf{Task 5: }
+
+```{r, eval=TRUE}
+# Performing PCA excluding the Class variable
+genes_data <- my.gene.subset[,-ncol(my.gene.subset)]
+pca_result <- prcomp(genes_data, scale. = TRUE)
+pc1_scores <- pca_result$x[,1]
+
+# Determining the Median of PC1
+median_pc1 <- median(pc1_scores)
+
+# Classify samples based on PC1's median
+predicted_class <- ifelse(pc1_scores > median_pc1, '2', '1')  # Assuming '2' for above median, '1' for below
+
+# Convert actual classes to character for compatibility with predicted classes in Fisher's test
+actual_class <- as.character(my.gene.subset$Class)
+
+# Fisher’s Exact Test
+contingency_table <- table(Predicted = predicted_class, Actual = actual_class)
+fishers_test_result <- fisher.test(contingency_table)
+
+# Calculate Sensitivity, Specificity, and Youden Index
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(actual_class))
+sensitivity <- conf_matrix$byClass['Sensitivity']
+specificity <- conf_matrix$byClass['Specificity']
+youden_index <- sensitivity + specificity - 1
+
+# Printing results
+print(fishers_test_result)
+```
